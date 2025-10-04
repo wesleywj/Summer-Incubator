@@ -1,0 +1,323 @@
+---
+title: "Enhanced ATE and Risk Ratio Analysis by Welfare Regime and Outcome Type"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(ggsci)
+library(ggthemes)
+library(tidyr)
+library(patchwork)
+library(stringr)
+```
+
+# Enhanced ATE and Risk Ratio Analysis
+
+This document provides comprehensive analysis of both Average Treatment Effects (ATE) and Risk Ratios across different welfare regimes and health outcomes.
+
+## Load Data
+
+```{r load_data}
+# Define the base path for results
+
+#With medoid reference
+#results_path <- "N/Incubator2025_ComputationalLifeCourse_YD/Results/"
+
+
+#For ATE Natural Course
+results_path <-"N:/Incubator2025_ComputationalLifeCourse/Results/ATE (Natural Course)"# Comment out when change for ATE with reference medoid.
+
+# Load Risk Ratio summary files - using base R read.csv to avoid vroom issues
+df_risk_ratio_adl <- read.csv(file.path(results_path, "risk_ratio_summary_adl_65-75_all.csv"))
+df_risk_ratio_depress <- read.csv(file.path(results_path, "risk_ratio_summary_depress_65-75_all.csv"))
+df_risk_ratio_self_rated <- read.csv(file.path(results_path, "risk_ratio_summary_self_rated_65-75_all.csv"))
+
+# Load Raw ATE summary files
+df_raw_ate_adl <- read.csv(file.path(results_path, "raw_ate_summary_adl_65-75_all.csv"))
+df_raw_ate_depress <- read.csv(file.path(results_path, "raw_ate_summary_depress_65-75_all.csv"))
+df_raw_ate_self_rated <- read.csv(file.path(results_path, "raw_ate_summary_self_rated_65-75_all.csv"))
+
+# Load Standardized ATE summary files
+df_std_ate_adl <- read.csv(file.path(results_path, "std_ate_summary_adl_65-75_all.csv"))
+df_std_ate_depress <- read.csv(file.path(results_path, "std_ate_summary_depress_65-75_all.csv"))
+df_std_ate_self_rated <- read.csv(file.path(results_path, "std_ate_summary_self_rated_65-75_all.csv"))
+
+# Add outcome type to each dataset
+outcomes <- c("ADL Problems", "Depression", "Poor Self-Rated Health")
+
+df_risk_ratio_adl$outcome <- outcomes[1]
+df_risk_ratio_depress$outcome <- outcomes[2]
+df_risk_ratio_self_rated$outcome <- outcomes[3]
+
+df_raw_ate_adl$outcome <- outcomes[1]
+df_raw_ate_depress$outcome <- outcomes[2]
+df_raw_ate_self_rated$outcome <- outcomes[3]
+
+df_std_ate_adl$outcome <- outcomes[1]
+df_std_ate_depress$outcome <- outcomes[2]
+df_std_ate_self_rated$outcome <- outcomes[3]
+
+# Combine all datasets
+df_risk_combined <- bind_rows(df_risk_ratio_adl, df_risk_ratio_depress, df_risk_ratio_self_rated)
+df_raw_combined <- bind_rows(df_raw_ate_adl, df_raw_ate_depress, df_raw_ate_self_rated)
+df_std_combined <- bind_rows(df_std_ate_adl, df_std_ate_depress, df_std_ate_self_rated)
+
+# Parse regime and medoid columns - unified function
+parse_data <- function(df) {
+  df %>%
+    mutate(
+      # Extract regime (everything before the last underscore + "medoid")
+      regime = case_when(
+        str_detect(medoid_regime, "^Mediterranean") ~ "Mediterranean",
+        str_detect(medoid_regime, "^Corporatist") ~ "Corporatist", 
+        str_detect(medoid_regime, "^Scandinavian") ~ "Scandinavian",
+        TRUE ~ NA_character_
+      ),
+      # Extract medoid number (the number after the last underscore)
+      medoid = as.numeric(str_extract(medoid_regime, "\\d+$")),
+      # Create medoid names
+      medoid_name = case_when(
+        medoid == 0 ~ "FT w/o children",
+        medoid == 1 ~ "PT w children",
+        medoid == 2 ~ "FT w children",
+        medoid == 3 ~ "UE w children"
+      ),
+      # Convert to factors with proper ordering
+      regime = factor(regime, levels = c("Mediterranean", "Corporatist", "Scandinavian")),
+      outcome = factor(outcome, levels = outcomes),
+      medoid_name = factor(medoid_name, levels = c("FT w children", "FT w/o children",  "PT w children", "UE w children"))
+    )
+}
+
+# Apply parsing to all datasets
+df_risk_combined <- parse_data(df_risk_combined)
+df_raw_combined <- parse_data(df_raw_combined)
+df_std_combined <- parse_data(df_std_combined)
+
+print("Data loaded successfully!")
+print(paste("Total observations - Risk Ratio:", nrow(df_risk_combined)))
+print(paste("Total observations - Raw ATE:", nrow(df_raw_combined)))
+print(paste("Total observations - Std ATE:", nrow(df_std_combined)))
+print("Outcomes available:")
+print(unique(df_risk_combined$outcome))
+print("Regimes available:")
+print(unique(df_risk_combined$regime))
+```
+
+## Plot Functions
+
+### Risk Ratio Plot Function
+
+```{r risk_ratio_plot_function}
+plot_risk_ratio_by_regime <- function(df, regime_name, title = "Trajectory Effects", 
+                                    width = 8, height = 8, save_plot = TRUE) {
+  
+  # Filter data for specific regime
+  df_regime <- df %>%
+    filter(regime == regime_name)
+  
+  # Create the plot with outcomes on x-axis 
+  p <- df_regime %>%
+    ggplot(aes(x = outcome, y = mean, color = medoid_name)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+    scale_y_continuous(
+      limits = c(0.3, 1.7),
+      breaks = seq(0.4, 1.6, by = 0.2), 
+      labels = function(x) formatC(x, format = "f", digits = 1, width = 5)
+    ) + 
+    labs(
+      color = " ",
+      title = title
+    ) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Save the plot if requested
+  if (save_plot) {
+    regime_clean <- gsub("[^A-Za-z0-9]", "_", regime_name)
+    filename <- paste0("risk_ratio_", tolower(regime_clean), "_by_outcomes.pdf")
+    
+    ggsave(
+      filename = file.path(results_path, filename),
+      plot = p,
+      width = width,
+      height = height,
+      device = "pdf"
+    )
+    
+    cat("Plot saved as:", filename, "\n")
+  }
+  
+  return(p)
+}
+```
+
+### ATE Plot Function
+
+```{r ate_plot_function}
+plot_ate_by_regime <- function(df, regime_name, title = "ATE Effects", 
+                              width = 8, height = 8, save_plot = TRUE, ate_type = "Raw", 
+                              y_limits = NULL) {
+  
+  df_regime <- df %>% filter(regime == regime_name)
+  
+  p <- df_regime %>%
+    ggplot(aes(x = outcome, y = mean, color = medoid_name)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    labs(color = " ", title = title) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+  
+  # Add standardized y-axis limits if provided
+  if (!is.null(y_limits)) {
+    p <- p + scale_y_continuous(limits = y_limits)
+  }
+  
+  if (save_plot) {
+    regime_clean <- gsub("[^A-Za-z0-9]", "_", regime_name)
+    filename <- paste0(tolower(ate_type), "_ate_", tolower(regime_clean), "_by_outcomes.pdf")
+    ggsave(filename = file.path(results_path, filename), plot = p, width = width, height = height, device = "pdf")
+    cat("Plot saved as:", filename, "\n")
+  }
+  
+  return(p)
+}
+```
+
+## Risk Ratio Analysis
+
+### Individual Regime Plots (X-axis = Health Outcomes)
+
+```{r risk_ratio_regime_plots}
+# Mediterranean Welfare Regime
+p_risk_mediterranean <- plot_risk_ratio_by_regime(
+  df_risk_combined, 
+  "Mediterranean",
+  title = "Mediterranean Welfare Regime:\nLife Course Effects on Health Outcomes (Risk Ratio)"
+)
+
+print(p_risk_mediterranean)
+```
+
+```{r}
+# Corporatist Welfare Regime
+p_risk_corporatist <- plot_risk_ratio_by_regime(
+  df_risk_combined,
+  "Corporatist", 
+  title = "Corporatist Welfare Regime:\nLife Course Effects on Health Outcomes (Risk Ratio)"
+)
+
+print(p_risk_corporatist)
+```
+
+```{r}
+# Scandinavian Welfare Regime
+p_risk_scandinavian <- plot_risk_ratio_by_regime(
+  df_risk_combined,
+  "Scandinavian",
+  title = "Scandinavian Welfare Regime:\nLife Course Effects on Health Outcomes (Risk Ratio)"
+)
+
+print(p_risk_scandinavian)
+```
+
+### Risk Ratio Grid Plot
+
+```{r risk_ratio_grid_plot}
+# Create a comprehensive grid plot with all three welfare regimes - HORIZONTAL layout
+pdf(file.path(results_path, "risk_ratio_three_regimes_grid.pdf"), 
+    width = 20, height = 6)
+grid.arrange(p_risk_mediterranean, p_risk_corporatist, p_risk_scandinavian, nrow = 1, ncol = 3)
+dev.off()
+
+cat("Risk Ratio grid plot saved as: risk_ratio_three_regimes_grid.pdf\n")
+
+# Also display in notebook
+grid.arrange(p_risk_mediterranean, p_risk_corporatist, p_risk_scandinavian, nrow = 1, ncol = 3)
+```
+
+## Raw ATE Analysis
+
+```{r raw_ate_plots}
+# Calculate standardized y-axis limits for raw ATE
+raw_y_min <- min(df_raw_combined$ci_lower, na.rm = TRUE)
+raw_y_max <- max(df_raw_combined$ci_upper, na.rm = TRUE)
+raw_y_limits <- c(raw_y_min, raw_y_max)
+
+cat("Raw ATE y-axis limits:", raw_y_limits, "\n")
+
+# Individual regime plots with standardized y-axis
+p_raw_med <- plot_ate_by_regime(df_raw_combined, "Mediterranean", 
+                               "Mediterranean Welfare Regime:\nRaw ATE Effects on Health Outcomes", 
+                               ate_type = "Raw", y_limits = raw_y_limits)
+p_raw_corp <- plot_ate_by_regime(df_raw_combined, "Corporatist", 
+                                "Corporatist Welfare Regime:\nRaw ATE Effects on Health Outcomes", 
+                                ate_type = "Raw", y_limits = raw_y_limits)
+p_raw_scan <- plot_ate_by_regime(df_raw_combined, "Scandinavian", 
+                                "Scandinavian Welfare Regime:\nRaw ATE Effects on Health Outcomes", 
+                                ate_type = "Raw", y_limits = raw_y_limits)
+
+# Grid plot
+pdf(file.path(results_path, "raw_ate_three_regimes_grid.pdf"), width = 20, height = 6)
+grid.arrange(p_raw_med, p_raw_corp, p_raw_scan, nrow = 1, ncol = 3)
+dev.off()
+
+cat("Raw ATE grid plot saved as: raw_ate_three_regimes_grid.pdf\n")
+grid.arrange(p_raw_med, p_raw_corp, p_raw_scan, nrow = 1, ncol = 3)
+```
+
+## Standardized ATE Analysis
+
+```{r std_ate_plots}
+# Individual regime plots
+p_std_med <- plot_ate_by_regime(df_std_combined, "Mediterranean", 
+                               "Mediterranean Welfare Regime:\nStandardized ATE Effects on Health Outcomes", ate_type = "Std")
+p_std_corp <- plot_ate_by_regime(df_std_combined, "Corporatist", 
+                                "Corporatist Welfare Regime:\nStandardized ATE Effects on Health Outcomes", ate_type = "Std")
+p_std_scan <- plot_ate_by_regime(df_std_combined, "Scandinavian", 
+                                "Scandinavian Welfare Regime:\nStandardized ATE Effects on Health Outcomes", ate_type = "Std")
+
+# Grid plot
+pdf(file.path(results_path, "std_ate_three_regimes_grid.pdf"), width = 20, height = 6)
+grid.arrange(p_std_med, p_std_corp, p_std_scan, nrow = 1, ncol = 3)
+dev.off()
+
+cat("Standardized ATE grid plot saved as: std_ate_three_regimes_grid.pdf\n")
+grid.arrange(p_std_med, p_std_corp, p_std_scan, nrow = 1, ncol = 3)
+```
+
+## Summary
+
+This combined analysis provides:
+
+1. **Risk Ratio Analysis**: Shows the relative risk of health outcomes across different life course trajectories
+2. **Raw ATE Analysis**: Shows the absolute treatment effects on health outcomes
+3. **Standardized ATE Analysis**: Shows the standardized treatment effects for better comparison
+
+All analyses are conducted across three welfare regimes (Mediterranean, Corporatist, Scandinavian) and three health outcomes (ADL Problems, Depression, Poor Self-Rated Health).
+
+The plots are saved as individual PDF files for each regime and as comprehensive grid plots showing all three regimes side by side. 

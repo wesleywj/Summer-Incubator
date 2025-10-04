@@ -1,0 +1,386 @@
+---
+title: "Plot raw ATE"
+output: html_document
+date: "2025-07-15"
+---
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(ggsci)
+library(ggthemes)
+library(readr)
+library(stringr)
+library(dplyr)  
+library(patchwork) 
+library(gridExtra) 
+library(scales)
+```
+
+
+# ATE plots
+```{r}
+load_and_process_ate <- function(path, regime_levels = c("Pooled", "Mediterranean", "Corporatist", "Scandinavian")) {
+  df <- read_csv(path)
+  
+  # Extract regime and medoid
+  matches <- str_match(df$medoid_regime, "^(.*)_medoid_(\\d)")
+  df$regime <- matches[, 2]
+  df$medoid <- matches[, 3]
+  
+  # Convert regime to factor with specified levels
+  df$regime <- factor(df$regime, levels = regime_levels)
+  
+  return(df)
+}
+```
+
+```{r}
+df_raw_ate_adl <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/raw_ate_summary_adl_65-75_all.csv")
+df_std_ate_adl <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/std_ate_summary_adl_65-75_all.csv")
+df_risk_ratio_adl <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/risk_ratio_summary_adl_65-75_all.csv")
+
+```
+
+```{r}
+df_risk_ratio_adl_no_cohabit_no_child
+```
+
+```{r}
+df_raw_ate_depress <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/raw_ate_summary_depress_65-75_all.csv")
+df_std_ate_depress <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/std_ate_summary_depress_65-75_all.csv")
+df_risk_ratio_depress <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/risk_ratio_summary_depress_65-75_all.csv")
+```
+
+```{r}
+df_raw_ate_self_rated <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/raw_ate_summary_self_rated_65-75_all.csv")
+df_std_ate_self_rated <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/std_ate_summary_self_rated_65-75_all.csv")
+df_risk_ratio_self_rated <- load_and_process_ate("N:/Incubator2025_ComputationalLifeCourse/Results/risk_ratio_summary_self_rated_65-75_all.csv")
+```
+
+
+
+
+```{r}
+plot_raw_ate <- function(df, title = "Trajectory Effects", width = 8, height = 6) {
+  # Get df name as string
+  df_name <- deparse(substitute(df))
+  filename <- paste0(df_name, ".pdf")
+  
+  # Create plot object
+  p <- df %>%
+    mutate(
+      medoid = case_when(
+        medoid == 0 ~ "FT w/o children",
+        medoid == 1 ~ "PT w children",
+        medoid == 2 ~ "FT w children",
+        TRUE        ~ "UE w children"
+      )
+    ) %>%
+    ggplot(aes(x = regime, y = mean, color = medoid)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    scale_y_continuous(
+      limits = c(-0.14, 0.06),
+      breaks = seq(-0.14, 0.06, by = 0.02), 
+      labels = function(x) formatC(x, format = "f", digits = 2, width = 5)
+    ) + 
+    labs(
+      color = " ",
+      title = title
+    ) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Ensure 'results' folder exists
+  if (!dir.exists("Results")) {
+    dir.create("Results")
+  }
+  
+  # Save the plot
+  ggsave(
+    filename = file.path("N:/Incubator2025_ComputationalLifeCourse/Results", filename),
+    plot = p,
+    width = width,
+    height = height,
+    device = "pdf"
+  )
+  
+  return(p)
+}
+```
+
+```{r}
+plot_std_ate <- function(df, title = "Trajectory Effects", width = 8, height = 6) {
+  # Get df name as string
+  df_name <- deparse(substitute(df))
+  filename <- paste0(df_name, ".pdf")
+  
+  # Create plot object
+  p <- df %>%
+    mutate(
+      medoid = case_when(
+        medoid == 0 ~ "FT w/o children",
+        medoid == 1 ~ "PT w children",
+        medoid == 2 ~ "FT w children",
+        TRUE        ~ "UE w children"
+      )
+    ) %>%
+    ggplot(aes(x = regime, y = mean, color = medoid)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    scale_y_continuous(
+      limits = c(-1, 1),
+      breaks = seq(-1, 1, by = 0.2), 
+      labels = function(x) formatC(x, format = "f", digits = 1, width = 5)
+    ) + 
+    labs(
+      color = " ",
+      title = title
+    ) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Ensure 'results' folder exists
+  if (!dir.exists("Results")) {
+    dir.create("Results")
+  }
+  
+  # Save the plot
+  ggsave(
+    filename = file.path("N:/Incubator2025_ComputationalLifeCourse/Results", filename),
+    plot = p,
+    width = width,
+    height = height,
+    device = "pdf"
+  )
+  
+  return(p)
+}
+
+```
+
+```{r}
+plot_risk_ratio <- function(df, title = "Trajectory Effects", width = 8, height = 6) {
+  # Get df name as string
+  df_name <- deparse(substitute(df))
+  filename <- paste0(df_name, ".pdf")
+  
+  # Calculate min and max from the data (including confidence intervals)
+  y_min <- min(df$ci_lower, na.rm = TRUE)
+  y_max <- max(df$ci_upper, na.rm = TRUE)
+
+  # Add a little padding (e.g., 5%) so the points are not at the edge
+  y_pad <- 0.05 * (y_max - y_min)
+  y_min <- y_min - y_pad
+  y_max <- y_max + y_pad
+
+  # Create plot object
+  p <- df %>%
+    mutate(
+      medoid = case_when(
+        medoid == 0 ~ "FT w/o children",
+        medoid == 1 ~ "PT w children",
+        medoid == 2 ~ "FT w children",
+        TRUE        ~ "UE w children"
+      )
+    ) %>%
+    ggplot(aes(x = regime, y = mean, color = medoid)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+ scale_y_continuous(
+  limits = c(0.2, 3),
+  #breaks = c(0.2, 0.5, 1),
+  labels = label_number(accuracy = 0.1)
+) + 
+    labs(
+      color = " ",
+      title = title
+    ) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Ensure 'results' folder exists
+  if (!dir.exists("Results")) {
+    dir.create("Results")
+  }
+  
+  # Save the plot
+  ggsave(
+    filename = file.path("N:/Incubator2025_ComputationalLifeCourse/Results", filename),
+    plot = p,
+    width = width,
+    height = height,
+    device = "pdf"
+  )
+  
+  return(p)
+}
+
+```
+
+
+```{r}
+
+
+plot_risk_ratio <- function(df, title = "Trajectory Effects", width = 8, height = 6) {
+  # Get df name as string
+  df_name <- deparse(substitute(df))
+  filename <- paste0(df_name, ".pdf")
+  
+  # Calculate min and max from the data (including confidence intervals)
+  y_min <- min(df$ci_lower, na.rm = TRUE)
+  y_max <- max(df$ci_upper, na.rm = TRUE)
+
+  # Add a little padding (e.g., 5%) so the points are not at the edge
+  y_pad <- 0.05 * (y_max - y_min)
+  y_min <- y_min - y_pad
+  y_max <- y_max + y_pad
+
+  # Generate nice breaks dynamically
+  y_breaks <- pretty(c(y_min, y_max), n = 5)
+
+  # Create plot object
+  p <- df %>%
+    mutate(
+      medoid = case_when(
+        medoid == 0 ~ "FT w/o children",
+        medoid == 1 ~ "PT w children",
+        medoid == 2 ~ "FT w children",
+        TRUE        ~ "UE w children"
+      )
+    ) %>%
+    ggplot(aes(x = regime, y = mean, color = medoid)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper),
+      position = position_dodge(width = 0.5),
+      width = 0.3,
+      linewidth = 0.8
+    ) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+    scale_y_continuous(
+      limits = c(y_min, y_max),
+      breaks = y_breaks,
+      labels = label_number(accuracy = 0.1)
+    ) + 
+    labs(
+      color = " ",
+      title = title
+    ) +
+    scale_color_npg() +
+    theme_economist_white() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Ensure 'Results' folder exists
+  if (!dir.exists("Results")) {
+    dir.create("Results")
+  }
+  
+  # Save the plot
+  ggsave(
+    filename = file.path("N:/Incubator2025_ComputationalLifeCourse/Results", filename),
+    plot = p,
+    width = width,
+    height = height,
+    device = "pdf"
+  )
+  
+  return(p)
+}
+
+```
+
+```{r}
+# Plot coefficient plot
+p_raw_ate_adl <- plot_raw_ate(df_raw_ate_adl,       title = "Trajectory Effects on Having\nActivities of Daily Living (ADL) Problems\n(Raw ATE)\nRef: FT w children")
+p_std_ate_adl <- plot_std_ate(df_std_ate_adl,        title = "Trajectory Effects on Having\nActivities of Daily Living (ADL) Problems\n(Standardized ATE)\nRef: FT w children")
+p_risk_ratio_adl <- plot_risk_ratio(df_risk_ratio_adl,        title = "Trajectory Effects on Having\nActivities of Daily Living (ADL) Problems\n(Risk Ratio)\n Ref: FT w children")
+
+```
+
+  
+```{r}
+# Plot coefficient plot
+p_raw_ate_depress <- plot_raw_ate(df_raw_ate_depress,       title = "Trajectory Effects on Having\nDepression\n(Raw ATE)\nRef: FT w children")
+p_std_ate_depress <- plot_std_ate(df_std_ate_depress,        title = "Trajectory Effects on Having\nDepression\n(Standardized ATE)\nRef: FT w children")
+p_risk_ratio_depress <- plot_risk_ratio(df_risk_ratio_depress,        title = "Trajectory Effects on Having\nDepression\n(Risk Ratio)\nRef: FT w children")
+
+```
+ 
+ 
+```{r}
+# Plot coefficient plot
+p_raw_ate_self_rated <- plot_raw_ate(df_raw_ate_self_rated,       title = "Trajectory Effects on Reporting\nNot Good Health\n(Raw ATE)\nRef: FT w children")
+p_std_ate_self_rated <- plot_std_ate(df_std_ate_self_rated,        title = "Trajectory Effects on Reporting\nNot Good Health\n(Standardized ATE)\nRef: FT w children")
+p_risk_ratio_self_rated <- plot_risk_ratio(df_risk_ratio_self_rated, 
+                                            title = "Trajectory Effects on Reporting\nNot Good Health\n(Risk Ratio)\nRef: FT w children")
+
+```
+
+
+
+```{r}
+grid.arrange(p_raw_ate_adl, p_std_ate_adl, nrow = 1, ncol = 2)
+grid.arrange(p_raw_ate_self_rated, p_std_ate_self_rated, nrow = 1, ncol = 2)
+```
+
+```{r}
+pdf("N:/Incubator2025_ComputationalLifeCourse/Results/ate_adl_ref_ft_w_child.pdf", width = 20, height = 10)
+grid.arrange(p_raw_ate_adl, p_std_ate_adl, p_risk_ratio_adl, nrow = 1, ncol = 3)
+dev.off()
+```
+
+  
+```{r}
+pdf("N:/Incubator2025_ComputationalLifeCourse/Results/ate_depress_ref_ft_w_child.pdf", width = 20, height = 10)
+grid.arrange(p_raw_ate_depress, p_std_ate_depress, p_risk_ratio_depress, nrow = 1, ncol = 3)
+dev.off()
+```
+
+```{r}
+pdf("N:/Incubator2025_ComputationalLifeCourse/Results/ate_self_rated_ref_ft_w_child.pdf", width = 20, height = 10)
+grid.arrange(p_raw_ate_self_rated, p_std_ate_self_rated, p_risk_ratio_self_rated, nrow = 1, ncol = 3)
+dev.off()
+```
+
+
+```{r}
+pdf("N:/Incubator2025_ComputationalLifeCourse/Results/risk_ratio_ref_ft_w_child.pdf", width = 15, height = 10)
+grid.arrange(p_risk_ratio_adl, p_risk_ratio_depress, p_risk_ratio_self_rated, nrow = 1, ncol = 3)
+dev.off()
+```
+

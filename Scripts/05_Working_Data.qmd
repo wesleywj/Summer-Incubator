@@ -1,0 +1,363 @@
+# Load required functions 
+
+```{r}
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.1_agnesFunction.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.1_agnesFunction_sex.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.2_clusterFunction.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.3_clusterSelection.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.4_clusterDiagnostics.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.5_seqFunction.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.6_clusterHeterogeneity.R")
+source("N:/Incubator2025_ComputationalLifeCourse/Scripts/0.7_calculateOR.R")
+```
+
+
+# Load basic packages
+
+```{r}
+library(tidyverse)
+library(TraMineR)
+library(cluster)
+library(modelsummary)
+library(ggsci)
+library(ggthemes)
+library(fixest)
+```
+
+
+# Fast loading for objects already created previously
+
+I've saved our earlier output into a RData file so we don't have to re-run the analyses again in the future. It should contain all the key data required to perform any analyses you want. Run the code below to get the following files relatively quickly (~3mins):
+
+  - cluster_scores          (pairwise comparisons of dissimilarity scores between medoid and other sequences)
+  - cluster_entropy         (cluster-specific mean transversal entropy scores)
+  - pam_result_working_data (file produced after PAM clustering)
+  - working_data_seqact_ch  (family trajectories from age 18-50)
+  - working_data_seqact_emp (employment trajectories from age 18-50)
+  - working_data            (main dataset + clusters from PAM procedure)
+  - working_data_agnes      (agnes file for hierarcical clustering)
+  - working_data_dissim     (dissimilarity matrix)
+  - working_data_medoid4    (list of identifiers for 4-cluster medoids, and associated sequences)
+
+
+```{r}
+# load("N:/Incubator2025_ComputationalLifeCourse/Analysis/Sequence + Cluster Analysis/Wesley's Private Lab/working_data_files.RData")
+```
+
+
+# Load country data
+
+```{r}
+working_data <- readRDS("N:/Incubator2025_ComputationalLifeCourse/Data/Processed/working_data.rds")
+```
+
+# Load g_data 
+
+```{r}
+g_data <- read_csv("N:/Incubator2025_ComputationalLifeCourse/Data/Processed/g_data.csv")
+```
+
+
+# Create Agnes file using create_msa_rds() function 
+
+Ward hierarchical clustering is applied to the data.
+
+```{r}
+working_data_agnes <- create_msa_rds(working_data)
+```
+
+# Dendrogram
+
+```{r}
+plot_dendrogram <-  plot(working_data_agnes, which.plots = 2,
+                         main = "Dendrogram of Sequence Clusters")
+```
+
+# State distribution plots and Sequence Index Plots
+
+```{r}
+plot_clusters(working_data_agnes, max_k = 10)
+```
+
+
+# Cluster selection methods: Silhouette and Elbow
+
+```{r}
+cluster_selection(working_data_agnes, diss = working_data_dissim , max_k = 10)
+```
+
+Optimal number of clusters appear to be 3--5.
+
+
+# Partitioning around Medoids (PAM) Clustering
+
+Get state distribution and index plots by PAM
+
+```{r}
+plot_pam(working_data_dissim, k = 3)
+plot_pam(working_data_dissim, k = 4)
+plot_pam(working_data_dissim, k = 5)
+```
+
+Get Medoid by PAM
+
+```{r}
+working_data_medoid3 <- get_medoids(working_data_dissim, 3)
+working_data_medoid4 <- get_medoids(working_data_dissim, 4)
+working_data_medoid5 <- get_medoids(working_data_dissim, 5)
+```
+
+Assign cluster ID to main dataframe
+
+```{r}
+working_data$cluster <- pam_result_working_data$clustering
+```
+
+Medoid Frequency by Welfare Regimes
+
+```{r}
+# Extract employment/family sequence associated with medoid
+  emp_traj <- suppressMessages(seqformat(working_data_seqact_emp, from = "STS", to = "SPS"))
+  ch_traj <- suppressMessages(seqformat(working_data_seqact_ch, from = "STS", to = "SPS"))
+
+# Combine each row into one string by collapsing columns with "-"
+  emp_traj <- data.frame(traj = apply(emp_traj, 1, function(x) paste(na.omit(x), collapse = "-")))
+  ch_traj <- data.frame(traj = apply(ch_traj, 1, function(x) paste(na.omit(x), collapse = "-")))
+
+# Combine with mergeid
+  emp_traj <- cbind(working_data$mergeid, emp_traj)
+  ch_traj <- cbind(working_data$mergeid, ch_traj)
+  
+# Combine with regime type
+  emp_traj <- cbind(emp_traj, working_data$welfare_regime) %>%
+    rename(welfare_regime = "working_data$welfare_regime",
+           emp_traj = "traj",
+           mergeid = "working_data$mergeid")
+  
+  ch_traj <- cbind(ch_traj, working_data$welfare_regime) %>%
+    rename(welfare_regime = "working_data$welfare_regime",
+           ch_traj = "traj",
+           mergeid = "working_data$mergeid")
+  
+# Merge tables
+  traj_tbl <- merge(emp_traj, ch_traj, by = "mergeid")
+```
+
+
+```{r}
+# Occurence of medoid 1 sequence (FT with Children)
+  traj_tbl %>% 
+    group_by(welfare_regime.x) %>%
+    summarise(count = sum(emp_traj == "(ED,1)-(FT,32)" & ch_traj == "(NC0,5)-(C0,1)-(C1+,27)"),
+              proportion = count/n())
+  
+# Occurence of medoid 2 sequence (FT w/o Children)
+  traj_tbl %>% s
+    group_by(welfare_regime.x) %>%
+    summarise(count = sum(emp_traj == "(ED,2)-(FT,31)" & ch_traj == "(NC0,14)-(C0,19)"),
+              proportion = count/n())
+  
+# Occurence of medoid 3 sequence
+  traj_tbl %>% 
+    group_by(welfare_regime.x) %>%
+    summarise(count = sum(emp_traj == "(FT,3)-(OOLF,30)" & ch_traj == "(NC0,5)-(C0,1)-(C1+,27)"),
+              proportion = count/n())
+  
+# Occurence of medoid 4 sequence
+  traj_tbl %>% 
+    group_by(welfare_regime.x) %>%
+    summarise(count = sum(emp_traj == "(ED,1)-(FT,7)-(PT,25)" & ch_traj == "(NC0,5)-(C0,3)-(C1+,25)"),
+              proportion = count/n())
+```
+
+
+
+Subset only outcome and time-fixed covariates
+
+```{r}
+g_data_subset_long <- g_data %>%
+  dplyr::select(
+                y_adl_65_75_dic, y_self_rated_65_75_dic, y_depress_65_75_dic, # Outcome variables
+                starts_with("pre_"), # Time-fixed covariates
+                starts_with("dt_"),  # Duration covariates
+                starts_with("mod_welfare_regime"), # Welfare regime type
+                t_age,
+                mergeid
+                ) %>%
+  dplyr::select(-c("pre_yrbirth"))
+
+g_data_subset_wide <- g_data_subset_long %>%
+  group_by(mergeid) %>%
+  slice(1) %>%
+  ungroup() %>%
+  dplyr::mutate(
+    welfare_regime = case_when(
+      mod_welfare_regime_corporatist == 1     ~ "Corporatist",
+      mod_welfare_regime_mediterranean == 1   ~ "Mediterranean",
+      mod_welfare_regime_scandinavian == 1    ~ "Scandinavian",
+      TRUE                                     ~ NA_character_
+    )) %>%
+  dplyr::select(-c("mergeid", 
+                   starts_with("mod_welfare")))
+
+
+# Assign cluster ID to main dataframe
+g_data_subset_wide$cluster <- pam_result_working_data$clustering
+
+g_data_subset_wide <- g_data_subset_wide %>%
+  dplyr::mutate(cluster = case_when(
+      cluster == 1 ~ "Cluster 1: FT w Child",
+      cluster == 2 ~ "Cluster 2: FT w/o Child",
+      cluster == 3 ~ "Cluster 3: UE w Child",
+      cluster == 4 ~ "Cluster 4: PT w Child"
+    ))
+```
+
+
+# Descriptive statistics
+
+```{r}
+corp <- g_data_subset_wide %>%
+  dplyr::filter(welfare_regime == "Corporatist") %>%
+  dplyr::select(-welfare_regime)
+
+med <- g_data_subset_wide %>%
+  dplyr::filter(welfare_regime == "Mediterranean") %>%
+  dplyr::select(-welfare_regime)
+
+scandi <- g_data_subset_wide %>%
+  dplyr::filter(welfare_regime == "Scandinavian") %>%
+  dplyr::select(-welfare_regime)
+```
+
+
+Pooled Sample Descriptive Statistics
+
+```{r}
+# Descriptive statistics
+datasummary_balance(~1,
+            data = g_data_subset_wide,
+            title = "Pooled Sample Descriptives"
+            )
+```
+
+
+Pooled Sample Descriptive Statistics by Welfare Regime
+
+```{r}
+# Descriptive statistics
+datasummary_balance(~welfare_regime,
+            ,data = g_data_subset_wide,
+            title = "Pooled Sample Descriptives by Regime Type"
+            )
+```
+
+
+Pooled Sample Descriptive Statistics by Cluster
+
+```{r}
+# Descriptive statistics
+datasummary_balance(~cluster,
+            data = g_data_subset_wide,
+            title = "Pooled Sample Descriptives by Cluster"
+            )
+```
+
+
+Mediterranean-specific Descriptive Statistics
+
+```{r}
+# Descriptive statistics
+datasummary_balance(~cluster,
+            data = med,
+            title = "Mediterranean Descriptives"
+            )
+```
+
+
+
+Corporatist Descriptive Statistics
+
+```{r}
+datasummary_balance(~cluster,
+            data = corp,
+            title = "Corporatist Descriptives"
+            )
+```
+
+
+Scandinavian Descriptive Statistics
+
+```{r}
+datasummary_balance(~cluster,
+            data = med,
+            title = "Scandinavian Descriptives"
+            )
+```
+
+
+Country Composition by cluster
+
+```{r}
+# Function to plot country composition
+
+plot_country_composition <- function(data, regime) {
+
+  plot_title = "Country Composition by Cluster - "
+  
+  # Compute country proportions within each cluster
+  country_props <- data %>%
+    count(cluster, country) %>%
+    group_by(cluster) %>%
+    mutate(
+      pct = n / sum(n),
+      pct_label = paste0(round(pct * 100), "%")
+    ) %>%
+    ungroup()
+
+  # Create the plot
+  ggplot(country_props, aes(x = cluster, y = n, fill = country)) +
+    geom_col(position = "stack") +
+    geom_text(aes(label = pct_label),
+              position = position_stack(vjust = 0.5),
+              color = "white", size = 3) +
+    ggsci::scale_fill_npg() +
+    theme_classic() +
+    ggtitle(paste0(plot_title, regime))
+}
+```
+
+
+```{r}
+# Plot country composition across regime types
+plot_country_composition(med, "Mediterranean")
+plot_country_composition(corp, "Corporatist")
+plot_country_composition(scandi, "Scandinavian")
+```
+
+
+
+# Cluster heterogeneity - Dissimilarity scores
+
+```{r}
+# cluster_het to obtain various metrics to measure heterogeneity
+cluster_scores <- cluster_het(working_data_dissim)
+
+# Get mean pairwise dissimilarity score comparison between medoid and all other sequences
+print(cluster_scores$wmd) # not standardised
+print(cluster_scores$wmd_scaled) # standardised scores
+
+```
+
+
+# Cluster heterogeneity - transversal entropy
+
+```{r}
+cluster_entropy <- cluster_ent(working_data_dissim)
+
+# Get transversal entropy scores
+print(cluster_entropy$entropy_ch) # family status
+print(cluster_entropy$entropy_emp) # employment 
+```
+
+s
